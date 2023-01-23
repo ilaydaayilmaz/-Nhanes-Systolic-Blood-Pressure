@@ -1,0 +1,692 @@
+---
+title: "Project-İlayda"
+author: "İlayda Yılmaz"
+date: "02 06 2022"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readxl)
+library(lmtest)
+library(car)
+library(EnvStats)
+library(ggplot2)
+library(AID)
+library(caret)
+library(dplyr)
+library(statmod)
+library(coin)
+library(rsq)
+library(foreign)
+library(GLMsData)
+library(MASS)
+library(AER)
+library(pROC)
+library(rstatix)
+library(ggpubr)
+library(tidyverse)
+```
+
+
+
+```{r}
+nhanes_systolic <- read_excel("nhanes_systolic.xlsx")
+
+nhanes_systolic$INDHHIN2 <- as.factor(nhanes_systolic$INDHHIN2)
+nhanes_systolic$RIAGENDR<-as.factor(nhanes_systolic$RIAGENDR)
+nhanes_systolic$BPXPULS<-as.factor(nhanes_systolic$BPXPULS)
+nhanes_systolic$SMQ020<-as.factor(nhanes_systolic$SMQ020)
+nhanes_systolic$DMDHHSIZ<-as.factor(nhanes_systolic$DMDHHSIZ)
+
+sum(is.na(nhanes_systolic))
+str(nhanes_systolic)
+```
+
+response variable is BPXSY1
+
+
+```{r}
+set.seed(2022)
+trainIndex <- createDataPartition(nhanes_systolic$BPXSY1, p = .75,  list = FALSE, times = 1)
+train.set <- nhanes_systolic[ trainIndex,]
+test.set  <- nhanes_systolic[-trainIndex,]
+```
+
+
+```{r}
+#ggplot(nhanes_systolic, aes(DMDHHSIZ, BPXSY1 )) + geom_point() + geom_boxplot()
+#ggplot(nhanes_systolic, aes(INDHHIN2, BPXSY1 )) + geom_point() + geom_boxplot()
+
+ggplot(nhanes_systolic, aes(RIAGENDR, BPXSY1 )) + geom_point() + 
+  geom_boxplot(aes(fill = RIAGENDR))+ theme_bw()+ 
+  xlab("Gender") + ylab("Systolic Blood Pressure")+
+  labs(fill = "Gender")+
+  scale_fill_discrete(name = "Gender", labels = c("Male", "Female"))
+
+ggplot(nhanes_systolic, aes(BMXBMI, BPXSY1 )) + geom_point() + geom_smooth() + 
+  xlab("Participant’s Body Mass Index") + ylab("Systolic Blood Pressure")
+
+ggplot(nhanes_systolic, aes(BPXPULS, BPXSY1 )) + geom_point() + 
+  geom_boxplot(aes(fill = BPXPULS))+ theme_bw()+
+  xlab("Pulse Type") + ylab("Systolic Blood Pressure")+
+  scale_fill_discrete(name = "Type", labels = c("Regular", "Irregular"))
+
+
+ggplot(nhanes_systolic, aes(BPXML1, BPXSY1 )) + geom_point() + geom_smooth() + 
+  xlab("Maximum Inflation Levels") + ylab("Systolic Blood Pressure")
+
+ggplot(nhanes_systolic, aes(RIDAGEYR, BPXSY1 )) + geom_point() + geom_smooth() + 
+  xlab("Age in Years at Screening") + ylab("Systolic Blood Pressure")
+
+ggplot(nhanes_systolic, aes(DR1TALCO, BPXSY1)) + geom_point() + geom_smooth() + 
+  xlab("Alcohol Level") + ylab("Systolic Blood Pressure")
+#ggplot(nhanes_systolic, aes(DR1TSODI, BPXSY1)) + geom_point() + geom_smooth()
+#ggplot(nhanes_systolic, aes(DR1TPOTA, BPXSY1)) + geom_point() + geom_smooth()
+#ggplot(nhanes_systolic, aes(DR1TCALC, BPXSY1)) + geom_point() + geom_smooth()
+#ggplot(nhanes_systolic, aes(DR1TMAGN, BPXSY1)) + geom_point() + geom_smooth()
+#ggplot(nhanes_systolic, aes(DR1TPROT, BPXSY1)) + geom_point() + geom_smooth()
+#ggplot(nhanes_systolic, aes(DR1TKCAL, BPXSY1)) + geom_point() + geom_smooth()
+#ggplot(nhanes_systolic, aes(SMQ020, BPXSY1)) + geom_point() + geom_boxplot()
+
+
+```
+
+
+Correlation Matrix:
+
+```{r}
+num.association <- cor(nhanes_systolic[,c(4,5,6,8,9,10,11,12,13,14,15)])
+num.association
+
+numericCols<-select_if(nhanes_systolic,is.numeric)
+cors<-cor(numericCols)
+corrplot::corrplot(cors,tl.pos='n')
+```
+
+VIF:
+
+```{r}
+full.model <- lm(BPXSY1~., nhanes_systolic)
+car::vif(full.model)
+```
+
+At first we suspected it might be a multicollinearity problem because there was high correlation between predictors in the correlation matrix. We looked at VIF values for further confirmatory analysis. Since all VIF values are less than 10 threshold, we decided that there is no multicollinearity problem.
+
+
+```{r}
+plot(full.model)
+```
+
+
+
+```{r}
+shapiro.test(nhanes_systolic$BPXSY1)
+```
+Residuals are not normally distributed since p-value is less than 0.05.
+
+
+```{r}
+boxcoxnc(nhanes_systolic$BPXSY1)
+```
+From this we concluded that transformed data are not normal.
+
+
+```{r}
+
+#nhanes_systolic$BPXSY1 <- log(nhanes_systolic$BPXSY1)
+
+#nhanes_systolic$BPXSY1 <- nhanes_systolic$BPXSY1**0.1 
+#nhanes_systolic$BPXSY1 <- nhanes_systolic$BPXSY1**0.2
+#nhanes_systolic$BPXSY1 <- nhanes_systolic$BPXSY1**0.5
+#nhanes_systolic$BPXSY1 <- nhanes_systolic$BPXSY1**0.8
+#nhanes_systolic$BPXSY1 <- nhanes_systolic$BPXSY1**1.5
+#nhanes_systolic$BPXSY1 <- nhanes_systolic$BPXSY1**2
+
+
+#nhanes_systolic$BPXSY1 <- nhanes_systolic$BPXSY1**(-0.1)
+#nhanes_systolic$BPXSY1 <- nhanes_systolic$BPXSY1**(-0.2)
+#nhanes_systolic$BPXSY1 <- nhanes_systolic$BPXSY1**(-0.3) 
+#nhanes_systolic$BPXSY1 <- nhanes_systolic$BPXSY1**(-0.4)
+#nhanes_systolic$BPXSY1 <- nhanes_systolic$BPXSY1**(-0.7)
+#nhanes_systolic$BPXSY1 <- nhanes_systolic$BPXSY1**(-0.9)
+#nhanes_systolic$BPXSY1 <- nhanes_systolic$BPXSY1**(-1)
+#nhanes_systolic$BPXSY1 <- nhanes_systolic$BPXSY1**(-1.18)
+#nhanes_systolic$BPXSY1 <- nhanes_systolic$BPXSY1**(-2)
+
+#shapiro.test(nhanes_systolic$BPXSY1 )
+
+```
+After trying above transformations, the response variable does not distributed normally.
+
+```{r}
+bptest(full.model)
+```
+From the fitted values vs residuals plot, we suspect a non-constant variance problem.
+
+bptest also confirmed that we have a non-constant variance problem.
+
+
+
+
+## Model Building
+
+
+ Why we used Gamma ?
+
+ Understanding the distribution of the response.
+
+
+
+```{r}
+
+plot(density(nhanes_systolic$BPXSY1))
+```
+
+
+
+# It seems the responses have right skewed distribution.
+
+```{r}
+
+fit1 <- fitdistr(nhanes_systolic$BPXSY1, "normal")
+fit2 <- fitdistr(nhanes_systolic$BPXSY1, "poisson")
+fit3 <- fitdistr(nhanes_systolic$BPXSY1, "negative binomial")
+fit4 <- fitdistr(nhanes_systolic$BPXSY1, "gamma")
+
+AIC(fit1, fit2, fit3,fit4)
+```
+
+ We obtain lowest AIC by using Gamma Distribution.
+
+ We can use Gamma distribution for our response.
+
+
+
+##############################################
+
+
+Chi-square test for each categoric columns:
+
+```{r}
+categoricCols<-select_if(nhanes_systolic,is.factor)
+pval<-c()
+for(i in 1:ncol(categoricCols)){
+  pval[i]<-chisq.test(categoricCols[,i],nhanes_systolic$BPXSY1)$p.value
+}
+names(pval)<-names(categoricCols)
+impCategoricCol<-names(pval[pval<0.05])
+impCategoricCol
+```
+
+
+```{r}
+numericCols<-select_if(nhanes_systolic,is.numeric)
+```
+
+
+Full model:
+```{r}
+gamma.model <- glm(as.formula(paste(c("BPXSY1~",
+                                      colnames(numericCols[c(1,3:length(numericCols))]),
+                                      impCategoricCol),
+                                    collapse = "+")),
+                  family = Gamma(link="log"), train.set)
+
+summary(gamma.model)
+```
+
+
+```{r}
+#LRT ile
+modell<-step(gamma.model,test="LRT")
+
+# Both model
+both.model <- step(gamma.model, direction="both")
+```
+
+
+
+
+```{r}
+cat("Model using LRT: \n")
+summary(modell)
+
+cat("\n\n\n","BOTH MODEL: \n")
+summary(both.model)
+```
+Both methods gives same model.
+
+
+However, let's try all of the models and choose the best model.
+
+```{r}
+log.response.model <- glm(log(BPXSY1)~ RIDAGEYR + BMXBMI + BPXML1 + DR1TALCO , train.set, family = gaussian)
+summary(log.response.model)
+# Investigating adequacy of the model.
+plot(log.response.model)
+
+library(robustbase)
+robust.model <- glmrob(BPXSY1~RIDAGEYR + BMXBMI + BPXML1 + DR1TALCO ,train.set,family = Gamma)
+summary(robust.model)
+
+
+gamma.modellog <- glm(BPXSY1~RIDAGEYR + BMXBMI + BPXML1 + DR1TALCO , train.set, family = Gamma(link="log"))
+summary(gamma.modellog)
+plot(gamma.modellog)
+vif(gamma.modellog)
+acf(rstandard(gamma.modellog))
+```
+
+
+
+Seems about right.
+
+Did we choose the right distribution
+
+```{r}
+plot(gamma.modellog, which = 2)
+```
+
+
+
+```{r}
+
+
+gamma.modelidentity <- glm(log(BPXSY1)~ RIDAGEYR + BMXBMI + BPXML1 + DR1TALCO , train.set, family = Gamma(link="identity"))
+summary(gamma.modelidentity)
+plot(gamma.modelidentity)
+
+
+
+linear.model <- lm(BPXSY1~RIDAGEYR + BMXBMI + BPXML1 + DR1TALCO, train.set)
+boxcox(linear.model)
+
+train.set$BPXSY1tr <- train.set$BPXSY1^0.5
+gamma.model.0.5 <- glm(BPXSY1tr~RIDAGEYR + BMXBMI + BPXML1 + DR1TALCO , train.set, family = Gamma(link="identity"))
+summary(gamma.model.0.5)
+plot(gamma.model.0.5)
+
+
+inv.gauss.model <- glm(BPXSY1tr~RIDAGEYR + BMXBMI + BPXML1 + DR1TALCO , train.set, family = inverse.gaussian(link="identity"))
+summary(inv.gauss.model)
+plot(inv.gauss.model)
+
+rs <- cbind( rD=resid(inv.gauss.model), "r'D"=rstandard(inv.gauss.model),
+             "r''"=rstudent(inv.gauss.model), rQ=qresid(inv.gauss.model))
+apply(abs(rs), 2, max) # The maximum absolute for each residual
+im <- influence.measures(inv.gauss.model)
+colSums(im$is.inf)
+
+
+gamma.model.inverse <- glm(log(BPXSY1)~ RIDAGEYR + BMXBMI + BPXML1 + DR1TALCO , train.set, family = Gamma(link="inverse"))
+summary(gamma.model.inverse)
+plot(gamma.model.inverse)
+
+```
+
+
+```{r}
+
+mse.for.log.response.model <- mean((train.set$BPXSY1 - log.response.model$fitted.values)^2)
+mse.for.log.response.model
+
+mse.for.gamma.model.0.5 <- mean((train.set$BPXSY1 - gamma.model.0.5$fitted.values)^2)
+mse.for.gamma.model.0.5
+
+mse.for.gamma.modellog <- mean((train.set$BPXSY1 - gamma.modellog$fitted.values)^2)
+mse.for.gamma.modellog
+
+mse.for.gamma.modelidentity <- mean((train.set$BPXSY1 - gamma.modelidentity$fitted.values)^2)
+mse.for.gamma.modelidentity
+
+mse.for.robust.model<-mean((train.set$BPXSY1 - robust.model$fitted.values)^2)
+mse.for.robust.model
+
+mse.for.inv.gaussian.model <- mean((train.set$BPXSY1 - inv.gauss.model$fitted.values)^2)
+mse.for.inv.gaussian.model
+
+mse.for.inv.gamma.model <- mean((train.set$BPXSY1 - gamma.model.inverse$fitted.values)^2)
+mse.for.inv.gamma.model
+
+cat("gamma.modellog")
+summary(gamma.modellog)
+deviance(gamma.modellog)/df.residual(gamma.modellog)
+cat("\n\n\nmse.for.robust.model")
+summary(robust.model)
+deviance(robust.model)/df.residual(robust.model)
+cat("\n\n\nmse.for.gamma.model.0.5")
+summary(gamma.model.inverse)
+deviance(gamma.model.inverse)/df.residual(gamma.model.inverse)
+cat("\n\n\nmse.for.inv.gaussian.model")
+summary(gamma.modelidentity)
+deviance(gamma.modelidentity)/df.residual(gamma.modelidentity)
+
+print("gamma.modellog")
+predicted.test <- predict(gamma.modellog, test.set)
+predicted.train <- predict(gamma.modellog, train.set)
+rmse.test <- caret::RMSE(predicted.test, test.set$BPXSY1)
+rmse.train <- caret::RMSE(predicted.train, train.set$BPXSY1)
+rmse.test
+rmse.train
+print("mse.for.robust.model")
+predicted.test1 <- predict(robust.model, test.set)
+predicted.train1<- predict(robust.model, train.set)
+rmse.test1 <- caret::RMSE(predicted.test1, test.set$BPXSY1)
+rmse.train1 <- caret::RMSE(predicted.train1, train.set$BPXSY1)
+rmse.test1
+rmse.train1
+print("gamma.modelidentity")
+predicted.test2 <- predict(gamma.modelidentity, test.set)
+predicted.train2 <- predict(gamma.modelidentity, train.set)
+rmse.test2 <- caret::RMSE(predicted.test2, test.set$BPXSY1)
+rmse.train2 <- caret::RMSE(predicted.train2, train.set$BPXSY1)
+rmse.test2
+rmse.train2
+print("gamma.modelidentity")
+predicted.test3 <- predict(gamma.modelidentity, test.set)
+predicted.train3 <- predict(gamma.modelidentity, train.set)
+rmse.test3 <- caret::RMSE(predicted.test3, test.set$BPXSY1)
+rmse.train3<- caret::RMSE(predicted.train3, train.set$BPXSY1)
+rmse.test3
+rmse.train3
+
+```
+We first looked at the plots to see which model we should use. Afterwards, we decided to use the model with one of the lowest MSE value by comparing the MSEs of the models we created.  It means that we choose gamma log model.Remember this model:
+
+
+
+```{r}
+summary(gamma.modellog)
+```
+
+
+
+
+# Research Question 1:
+
+```{r}
+model <-  glm(BPXSY1~RIDAGEYR + BMXBMI + BPXML1 + DR1TALCO , train.set, family = Gamma(link="log"))
+summary(model)
+
+```
+
+
+
+Does the model fit well?
+
+```{r}
+deviance(model)
+df.residual(model)
+qchisq(0.05, 3415, lower.tail = F)
+deviance(model)/df.residual(model)
+
+pchisq(14.30084, 3552.064, lower.tail = F)
+
+```
+
+
+Does the model deviance indicate that the model from part a is satisfactory?
+
+The deviance is 37.918 and the degrees of freedom is 39. 37.918/39=0.97. Close to 1. Seems like a good fit.
+
+
+```{r}
+plot(model)
+```
+
+
+
+```{r}
+scatter.smooth(train.set$BPXSY1, residuals(model, "deviance"))
+```
+
+
+
+## Interactions:
+
+
+```{r}
+model.with.interactions <- glm(BPXSY1 ~ RIDAGEYR + BMXBMI + BPXML1 + DR1TALCO + 
+                                     RIDAGEYR:BMXBMI+ RIDAGEYR:BPXML1 +RIDAGEYR:DR1TALCO +
+                                     BMXBMI:BPXML1 +BMXBMI:DR1TALCO + BPXML1:DR1TALCO,
+                                   nhanes_systolic, family = Gamma(link="log"))
+summary(model.with.interactions)
+```
+
+```{r}
+303171  /4855  
+```
+Not a good fit.
+
+
+
+
+
+
+## Question 2
+Is the average systolic blood pressure significantly lower in irregular pulse compared to regular pulse?
+
+```{r}
+library(rstatix)
+nhanes_systolic %>% sample_n_by(BPXPULS, size =2)
+```
+
+summary stat
+
+```{r}
+nhanes_systolic %>%
+  group_by(BPXPULS) %>%
+  get_summary_stats(BPXSY1, type = "median_iqr")
+```
+
+
+Let's visualize it.
+
+```{r}
+library(ggpubr)
+
+bxplt <- ggboxplot(
+  nhanes_systolic, x = "BPXPULS", y = "BPXSY1", 
+  ylab = "Systolic Blood Pressure", xlab = "Type of Impuls"
+  )
+bxplt
+```
+
+Let's answer our research question
+
+```{r}
+st.t <- nhanes_systolic %>% 
+  wilcox_test(BPXSY1 ~ BPXPULS) %>%
+  add_significance()
+st.t
+```
+
+We can look at the size of the effect
+
+```{r}
+nhanes_systolic %>% wilcox_effsize(BPXSY1 ~ BPXPULS)
+```
+
+
+Effect size is small with 0.0419.
+
+To conclude, the median average systolic blood pressure in regular pulse was 118 and the median average systolic blook pressure was 124.
+Wilcoxon test demonstrated that the difference was significant.
+
+
+
+## Question 3
+Is the average systolic blood pressure significantly different from female and male?
+
+```{r}
+
+nhanes_systolic %>% sample_n_by(RIAGENDR, size =2)
+```
+
+summary stat
+
+```{r}
+nhanes_systolic %>%
+  group_by(RIAGENDR) %>%
+  get_summary_stats(BPXSY1, type = "median_iqr")
+```
+
+
+Let's visualize it.
+
+```{r}
+bxplt <- ggboxplot(
+  nhanes_systolic, x = "RIAGENDR", y = "BPXSY1", 
+  ylab = "Systolic Blood Pressure", xlab = "Gender"
+  )
+bxplt
+```
+
+Let's answer our research question
+
+```{r}
+st.t <- nhanes_systolic %>% 
+  wilcox_test(BPXSY1 ~ RIAGENDR) %>%
+  add_significance()
+st.t
+```
+
+We can look at the size of the effect
+
+```{r}
+nhanes_systolic %>% wilcox_effsize(BPXSY1 ~ RIAGENDR)
+```
+
+
+Effect size is small with 0.15.
+
+To conclude, the median average systolic blood pressure in male was 2361 and the median average systolic blood pressure in female was 2523.
+Wilcoxon test demonstrated that the difference was significant.
+
+
+
+###########################################???????????????
+
+Outliers and influential observations
+
+```{r}
+rs <- cbind( rD=resid(model), "r'D"=rstandard(model),
+             "r''"=rstudent(model), rQ=qresid(model))
+apply(abs(rs), 2, max) # The maximum absolute for each residual
+
+
+```
+
+
+## Independence Check:
+
+```{r}
+acf(residuals(model, "deviance"))
+```
+
+Check residuals vs predictors:
+
+Try for all variables in best model. 
+
+```{r}
+scatter.smooth(train.set$BPXSY1, residuals(model, "deviance"))
+```
+
+Check fitted values vs. predictors:
+
+2ln(y)
+
+```{r}
+scatter.smooth(2*log(model$fitted.values), residuals(model, "deviance"))
+```
+
+
+```{r}
+qqnorm(residuals(model,"deviance"))
+qqline(residuals(model,"deviance"))
+```
+
+Is there an overdispersion problem?
+
+```{r}
+deviance(model)/df.residual(model)
+```
+
+```{r}
+library(MASS)
+args(stepAIC)
+```
+
+# Model Adequacy Check
+
+
+Yukarıdaki modellerin karşılaştırılması için.
+As you can see the increasing mean variance relationship is still there and the residuals have a heavy-tailed distribution. So normal model with a log link is not the model we are looking for.
+
+```{r}
+
+plot(model)
+```
+Scale-location plot behaves better.(Örnek yazı.)
+
+Investigating the source of misfit.
+Multicollinearity Check
+
+```{r}
+vif(model)
+```
+
+Residual Independence Check 
+
+```{r}
+acf(rstandard(model))
+```
+
+The residuals are independent.
+
+
+Outliers and influential observations
+
+```{r}
+rs <- cbind( rD=resid(model), "r'D"=rstandard(model),
+"r''"=rstudent(model), rQ=qresid(model))
+apply(abs(rs), 2, max) # The maximum absolute for each residual
+
+im <- influence.measures(model)
+colSums(im$is.inf)
+```
+
+# Model Validation
+
+
+```{r}
+predicted.test <- predict(model, test.set)
+predicted.train <- predict(model, train.set)
+rmse.test <- caret::RMSE(predicted.test, test.set$BPXSY1)
+rmse.train <- caret::RMSE(predicted.train, train.set$BPXSY1)
+rmse.test
+rmse.train
+```
+
+Model valid.
+
+
+```{r}
+summary(model)
+
+model.test <-  glm(BPXSY1~RIDAGEYR + BMXBMI + BPXML1 + DR1TALCO , test.set, family = Gamma(link="log"))
+summary(model.test)
+```
+
+The estimated regression coefficients of two models and their estimated standard deviations are close each other.
+
+
+```{r}
+cat("MSE for train data",mean((train.set$BPXSY1 - model$fitted.values)^2),"\n")
+
+cat("MSE for validation data",mean((test.set$BPXSY1 - model.test$fitted.values)^2))
+
+
+```
+They are close each other.
